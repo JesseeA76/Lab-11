@@ -1,63 +1,77 @@
 import pandas as pd
 import numpy as np
-import tensorflow as tf
+import joblib
+import matplotlib.pyplot as plt
+from sklearn.model_selection import train_test_split
+from sklearn.preprocessing import StandardScaler
 from tensorflow.keras.models import Sequential
 from tensorflow.keras.layers import Dense, Dropout
 from tensorflow.keras.regularizers import l2
-from sklearn.model_selection import train_test_split
-from sklearn.preprocessing import StandardScaler, LabelEncoder
-import pickle
-import matplotlib.pyplot as plt
+from tensorflow.keras.callbacks import EarlyStopping
 
-# Load dataset
-data = pd.read_csv("lab_11_bridge_data.csv")
+# Load the dataset
+data = pd.read_csv('lab_11_bridge_data.csv')
 
-# Encode categorical feature 'Material'
-label_encoder = LabelEncoder()
-data['Material'] = label_encoder.fit_transform(data['Material'])
+# Handle missing values for numerical features only
+numerical_features = ['Span_ft', 'Deck_Width_ft', 'Age_Years', 'Num_Lanes', 'Condition_Rating']
+data[numerical_features] = data[numerical_features].fillna(data[numerical_features].mean())
 
-# Define features and target
-X = data.drop(columns=["Bridge_ID", "Max_Load_Tons"])
-y = data["Max_Load_Tons"]
+# One-hot encode the 'Material' categorical variable
+data = pd.get_dummies(data, columns=['Material'])
 
-# Normalize features
+# Normalize/standardize numerical features
 scaler = StandardScaler()
-X_scaled = scaler.fit_transform(X)
+data[numerical_features] = scaler.fit_transform(data[numerical_features])
 
-# Save preprocessing pipeline
-with open("preprocessing.pkl", "wb") as f:
-    pickle.dump((scaler, label_encoder), f)
+# Save the scaler
+joblib.dump(scaler, 'scaler.pkl')
 
-# Train-test split
-X_train, X_test, y_train, y_test = train_test_split(X_scaled, y, test_size=0.2, random_state=42)
+# Ensure all features are numeric
+X = data.drop(columns=['Max_Load_Tons'])
+y = data['Max_Load_Tons']
 
-# Build ANN model
+# Convert all columns to numeric, forcing errors to NaN
+X = X.apply(pd.to_numeric, errors='coerce')
+
+# Handle any remaining missing values
+X.fillna(0, inplace=True)
+
+# Convert DataFrame to NumPy array
+X = X.to_numpy()
+y = y.to_numpy()
+
+# Ensure all elements in the arrays are of type float
+X = X.astype(np.float32)
+y = y.astype(np.float32)
+
+# Split the data into training and test sets
+X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
+
+# Define the ANN model
 model = Sequential([
-    Dense(64, activation='relu', kernel_regularizer=l2(0.01), input_shape=(X_train.shape[1],)),
+    Dense(64, input_dim=X_train.shape[1], activation='relu', kernel_regularizer=l2(0.01)),
     Dropout(0.2),
     Dense(32, activation='relu', kernel_regularizer=l2(0.01)),
     Dropout(0.2),
-    Dense(1)
+    Dense(1, activation='linear')
 ])
 
-# Compile model
-model.compile(optimizer='adam', loss='mse', metrics=['mae'])
+# Compile the model
+model.compile(optimizer='adam', loss='mean_squared_error')
 
-# Early stopping
-early_stopping = tf.keras.callbacks.EarlyStopping(monitor='val_loss', patience=10, restore_best_weights=True)
+# Define early stopping
+early_stopping = EarlyStopping(monitor='val_loss', patience=10, restore_best_weights=True)
 
-# Train model
-history = model.fit(X_train, y_train, validation_data=(X_test, y_test), epochs=100, batch_size=16, callbacks=[early_stopping])
+# Train the model
+history = model.fit(X_train, y_train, epochs=100, batch_size=32, validation_data=(X_test, y_test), callbacks=[early_stopping])
 
-# Save model
-model.save("tf_bridge_model.keras")
-
-# Plot training history
-plt.figure(figsize=(8,5))
+# Plot training/validation loss vs. epochs
 plt.plot(history.history['loss'], label='Training Loss')
 plt.plot(history.history['val_loss'], label='Validation Loss')
-plt.xlabel("Epochs")
-plt.ylabel("Loss")
+plt.xlabel('Epochs')
+plt.ylabel('Loss')
 plt.legend()
-plt.title("Training vs Validation Loss")
 plt.show()
+
+# Save the model
+model.save('tf_bridge_model.h5')
