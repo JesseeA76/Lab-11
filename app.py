@@ -50,7 +50,7 @@ early_stopping = tf.keras.callbacks.EarlyStopping(monitor='val_loss', patience=1
 history = model.fit(X_train, y_train, validation_data=(X_test, y_test), epochs=100, batch_size=16, callbacks=[early_stopping])
 
 # Save model
-model.save("tf_bridge_model.h5")
+model.save("tf_bridge_model.keras")
 
 # Plot training history
 plt.figure(figsize=(8,5))
